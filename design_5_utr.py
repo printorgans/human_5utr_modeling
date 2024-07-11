@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import scipy.stats as stats
 import seaborn as sns
 from sklearn import preprocessing
+from keras.models import load_model
+import h5py
 
 # import keras
 # from keras.preprocessing import sequence
@@ -82,4 +84,45 @@ scaler = preprocessing.StandardScaler()
 # scaler.fit(scale_utrs['rl'].reshape(-1,1))
 scaler.fit(scale_utrs['rl'].values.reshape(-1, 1))
 
-plot_data(df, 'rl', 'total_reads', x_title='Read Length', y_title='Total Reads', xlim=(0, 100), ylim=(0, 1000), size=6, alpha=0.1)
+
+# model = load_model('../modeling/saved_models/evolution_model.hdf5')
+# model = load_model('../modeling/saved_models/retrained_evolution_model.hdf5')
+# model = load_model('../modeling/saved_models/main_MRL_model.hdf5')
+
+
+
+
+#plot_data(df, 'rl', 'total_reads', x_title='Read Length', y_title='Total Reads', xlim=(0, 100), ylim=(0, 1000), size=6, alpha=0.1)
+
+
+# model = load_model('./modeling/saved_models/retrained_main_MRL_model.h5')
+# Load the model
+try:
+    model = load_model('./modeling/saved_models/retrained_evolution_model.hdf5')
+except TypeError as e:
+    print(f"Error occurred: {e}")
+    with h5py.File('./modeling/saved_models/retrained_evolution_model.hdf5', 'r') as f:
+        config = f.attrs.get('model_config')
+        print(f"model_config: {config}")
+        # Attempt to decode the config if it's in bytes
+        if isinstance(config, bytes):
+            config = config.decode('utf-8')
+        print(f"Decoded model_config: {config}")
+        # Parse the JSON configuration to inspect it
+        import json
+        config_dict = json.loads(config)
+        print(f"config_dict: {config_dict}")
+
+        if "config" in config_dict:
+            config_list = config_dict["config"]
+            print(f"config['config']: {config_list}")
+            print(f"Type of config['config']: {type(config_list)}")
+
+            # If you need to remove an item from the list, use indexing
+            batch_input_shape = None
+            for item in config_list:
+                if isinstance(item, dict) and "batch_input_shape" in item:
+                    batch_input_shape = item.pop("batch_input_shape")
+                    break
+
+            print(f"batch_input_shape: {batch_input_shape}")
