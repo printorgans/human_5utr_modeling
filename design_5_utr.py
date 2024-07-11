@@ -238,17 +238,42 @@ def simple_mutate(seq, nbr_bases=1, prob=1):
         seq[pos] = ret_rand_nuc()
     return seq
 
+def simple_mutate_protect_ranges(seq, protect_ranges, nbr_bases=1, prob=1):
+    '''if multi-mutate probability is exceeded, do the number of mutations specified by nbr_bases.'''
+    ## create a set of protected positions
+    protected_positions = set()
+    for r in protect_ranges:
+        protected_positions.update(range(r[0], r[1]))
+
+
+    # Determine the number of bases to mutate
+    if nbr_bases > 1 and prob > random.random():
+        nbr_bases = nbr_bases
+    else:
+        nbr_bases = 1
+
+    # Mutate the sequence
+    for i in range(nbr_bases):
+        
+        pos = random.randint(0,len(seq)-1)
+        while pos in protected_positions:
+            pos = random.randint(0,len(seq)-1)
+        seq[pos] = ret_rand_nuc()
+    return seq
+
+
 def check_for_uaug(seq):
     seq = vector_to_nuc(seq)
-    return 'ATG' in seq[:50]
+    return 'ATG' in seq
 
 def check_for_stops(seq):
     seq = vector_to_nuc(seq)
-    if 'TAG' in seq[:50] or 'TGA' in seq[:50] or 'TAA' in seq[:50]:
+    if 'TAG' in seq or 'TGA' in seq or 'TAA' in seq:
         return True
     return False
 
 def negative_selection(seq, model, scaler, target_val, no_uaug=False, no_stop=False, nbr_bases_to_mutate=1, multi_mutate_prob=1):
+    """Not actually used"""
     seqs = np.empty([2,54,4])
     seqs[0] = seq.copy()
     seqs[1] = simple_mutate(seq.copy(), nbr_bases=nbr_bases_to_mutate, prob=multi_mutate_prob)
@@ -269,6 +294,7 @@ def negative_selection(seq, model, scaler, target_val, no_uaug=False, no_stop=Fa
         return seqs[0]    
 
 def selection(seq, model, scaler, target_val, no_uaug=False, no_stop=False, nbr_bases_to_mutate=1, multi_mutate_prob=1):
+    """Not actually used"""
     seqs = np.empty([2,50,4])
     seqs[0] = seq.copy()
     seqs[1] = simple_mutate(seq.copy(), nbr_bases=nbr_bases_to_mutate, prob=multi_mutate_prob)
@@ -288,12 +314,13 @@ def selection(seq, model, scaler, target_val, no_uaug=False, no_stop=False, nbr_
     else:
         return seqs[0]    
     
-def selection_to_target(seq, model, scaler, target_val, no_uaug=False, no_stop=False, nbr_bases_to_mutate=1, multi_mutate_prob=1, seq_len=50, accept_range=0.1):
+def selection_to_target(seq, protect_ranges, model, scaler, target_val, no_uaug=False, no_stop=False, nbr_bases_to_mutate=1, multi_mutate_prob=1, seq_len=50, accept_range=0.1):
+    """Selects for sequences that are within a certain range of the target value. If the mutated sequence is closer to the target value, it is selected."""
     seqs = np.empty([2,seq_len,4])
     # Save the incoming sequence before mutating
     seqs[0] = seq.copy()
     # The mutated sequence
-    seqs[1] = simple_mutate(seq.copy(), nbr_bases=nbr_bases_to_mutate, prob=multi_mutate_prob)
+    seqs[1] = simple_mutate_protect_ranges(seq.copy(),protect_ranges, nbr_bases=nbr_bases_to_mutate, prob=multi_mutate_prob)
     
     # Decide whether to continue with the new sequence based on the uAUG / stop codon preference
     if no_uaug == True and check_for_uaug(seqs[1]):
@@ -312,7 +339,7 @@ def selection_to_target(seq, model, scaler, target_val, no_uaug=False, no_stop=F
         else:
             return seqs[0]    
 
-def check_quality():
+def check_quality(seq = "TGCAGATATCCATCACACTGGCGGCCGCTCGAGCAGACTGTAAATCTGCG"):
     df = pd.read_csv('./data/GSM3130435_egfp_unmod_1.csv.gz')
     df.sort_values('total_reads', ascending=False).reset_index(drop=True)
 
@@ -337,15 +364,13 @@ def check_quality():
     predictions = scaler.inverse_transform(predictions)
     print("Predictions:", predictions)
 
-
-
-def slop():
+def engineer_random_seqs():
     df = pd.read_csv('./data/GSM3130435_egfp_unmod_1.csv.gz')
     df.sort_values('total_reads', ascending=False).reset_index(drop=True)
 
     # Select a number of UTRs for the purpose of scaling.
     #scale_utrs = df[:40000]
-    scale_utrs = df[:4000]
+    scale_utrs = df[:40000]
 
     # Scale
     scaler = preprocessing.StandardScaler()
@@ -384,18 +409,19 @@ def slop():
         
         # Randomly generate starting sequences for evolving
         rand_seqs = make_random_sequences(nbr_sequences, seq_len, no_uaug=no_uaug, no_stop=no_stop)
-        test_sequences = np.empty([len(rand_seqs), seq_len, 4])
+        seqs = rand_seqs
+        test_sequences = np.empty([len(seqs), seq_len, 4])
         i = 0
         
         # One-hot encode sequences
-        for seq in rand_seqs:
+        for seq in seqs:
             test_sequences[i] = vectorizeSequence(seq.lower())
             i += 1
         
         # Evolve sequences
         for generation in range(0, iterations):
             for i in range(len(test_sequences)):
-                test_sequences[i] = selection_to_target(seq=test_sequences[i], model=model, scaler=scaler, target_val=target_rl,no_uaug=no_uaug,
+                test_sequences[i] = selection_to_target(seq=test_sequences[i], protect_ranges=[], model=model, scaler=scaler, target_val=target_rl,no_uaug=no_uaug,
                                             no_stop=no_stop, nbr_bases_to_mutate=nbr_bases_to_mutate, multi_mutate_prob=prob_of_multi_mutation, seq_len=seq_len)
 
             if (generation + 1) %  20 == 0:
@@ -418,7 +444,140 @@ def slop():
 
     #for i in evolved_seqs:
     ##    sns.kdeplot(evolved_seqs[i]['prediction'], fill=True, label=i)
+def find_substring_indexes(sequence, substring):
+    indexes = []
+    index = sequence.find(substring)
+    while index != -1:
+        indexes.append((index, index + len(substring)))
+        index = sequence.find(substring, index + 1)
+    return indexes
 
 
-check_quality()
-#slop()
+def truncate_sequence(sequence, protect_ranges, max_seq_length):
+    """Truncate the sequence and adjust the protected ranges accordingly."""
+    # Truncate the sequence
+    truncated_sequence = sequence[-max_seq_length:]
+    
+    # Calculate the shift amount (how many elements were truncated from the start)
+    shift_amount = len(sequence) - len(truncated_sequence)
+    
+    # Adjust the protected ranges
+    new_protect_ranges = []
+    for start, end in protect_ranges:
+        new_start = max(0, start - shift_amount)
+        new_end = max(0, end - shift_amount)
+        
+        # Ensure the new range is within the bounds of the truncated sequence
+        if new_start < len(truncated_sequence):
+            new_end = min(len(truncated_sequence) - 1, new_end)
+            new_protect_ranges.append([new_start, new_end])
+    
+    return truncated_sequence, new_protect_ranges
+
+def slop(seq = "GCAGACTGTAAATCTGCCACTGGCGGCCGCTCGAGCAGACTGTAAATCTGC", protect_sequences = ["GCAGACTGTAAATCTGC"]):
+    df = pd.read_csv('./data/GSM3130435_egfp_unmod_1.csv.gz')
+    df.sort_values('total_reads', ascending=False).reset_index(drop=True)
+
+    # Select a number of UTRs for the purpose of scaling.
+    #scale_utrs = df[:40000]
+    scale_utrs = df[:4000]
+
+    # Scale
+    scaler = preprocessing.StandardScaler()
+    # scaler.fit(scale_utrs['rl'].reshape(-1,1))
+    scaler.fit(scale_utrs['rl'].values.reshape(-1, 1))
+    # Usage
+    model_with_weights = ModelWithWeights()
+    model_with_weights.load_weights('./modeling/saved_models/main_MRL_model.hdf5')
+    model_with_weights.model.summary()
+    model = model_with_weights.model
+    #model = load_model('./modeling/saved_models/retrained_evolution_model.hdf5')
+
+            
+    # Dictionary where new sequences are saved
+    evolved_seqs = {}
+
+    # Number of evolution iterations
+    #iterations = 800
+    iterations = 200
+    # Number of bases to mutate if the probability to 'multi-mutate' is exceeded
+    nbr_bases_to_mutate = 2
+    # Probability to change multiple bases in an iteration
+    prob_of_multi_mutation = 0.5
+    # If using the original evolution model, set seq_len to 54. That model was
+    # trained on UTRs that included the first for basees of the CDS (ATGG).
+    seq_len = 50
+    # Choose target MRLs and the number of sequences to create for each
+    # targets = [5, 10]
+    #seqs_per_target = [10, 10]
+    targets = [8]
+    seqs_per_target = [10]
+    
+    # Choose whether or not to allow uAUGs and / or stop codons
+    no_uaug = True
+    no_stop = False
+
+    for target_rl, nbr_sequences in zip(targets, seqs_per_target):
+        print('Working on target_rl {} with {} sequences:'.format(target_rl, nbr_sequences))
+        
+        # Randomly generate starting sequences for evolving
+        # rand_seqs = make_random_sequences(nbr_sequences, seq_len, no_uaug=no_uaug, no_stop=no_stop)
+        # seqs = rand_seqs
+        protect_ranges = []
+        for i in protect_sequences:
+            protect_range = find_substring_indexes(seq, "GCAGACTGTAAATCTGC") ## protect against mutating TGT sequence
+            protect_ranges.extend(protect_range)
+
+        
+        seq, protect_ranges = truncate_sequence(seq, protect_ranges, seq_len)
+
+        seqs = [seq]
+        test_sequences = np.empty([len(seqs), seq_len, 4])
+        i = 0
+        
+        # One-hot encode sequences
+        for seq in seqs:
+            test_sequences[i] = vectorizeSequence(seq.lower())
+            i += 1
+        
+        # Evolve sequences
+        for generation in range(0, iterations):
+            for i in range(len(test_sequences)):
+                test_sequences[i] = selection_to_target(seq=test_sequences[i], protect_ranges=protect_ranges, model=model, scaler=scaler, target_val=target_rl,no_uaug=no_uaug,
+                                            no_stop=no_stop, nbr_bases_to_mutate=nbr_bases_to_mutate, multi_mutate_prob=prob_of_multi_mutation, seq_len=seq_len)
+
+            if (generation + 1) %  20 == 0:
+                print('Generation: {}'.format(generation + 1))          
+        # Final prediction then convert to text sequence
+        predictions = model.predict(test_sequences).reshape(-1, 1)
+    
+        predictions = scaler.inverse_transform(predictions)
+        converted_df = convert_and_save(test_sequences, predictions)
+
+        evolved_seqs[target_rl] = converted_df
+
+    # plot_seqs(evolved_seqs)
+
+    print(f"Evolved sequences: {evolved_seqs}")
+
+def plot_seqs(evolved_seqs):
+        # Plot using Plotly
+    plotly_data = pd.concat(evolved_seqs.values())
+
+    ## plot
+    fig = px.histogram(plotly_data, x='prediction', marginal="density", barmode='overlay', histnorm='density')
+    fig.show()
+
+
+#check_quality()
+
+
+if __name__ == '__main__':
+    ## get args from command line
+    import sys
+    if len(sys.argv) > 1:
+        seq = sys.argv[1]
+        protect_sequences = sys.argv[2:] if len(sys.argv) > 2 else ["GCAGACTGTAAATCTGC"]
+        slop(seq, protect_sequences)
+    else:
+        slop(seq="GCAGACTGTAAATCTGCCACTGGCGGCCGCTCGAGCAGACTGTAAATCTGC", protect_sequences=["GCAGACTGTAAATCTGC"])

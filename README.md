@@ -1,4 +1,10 @@
-requries python 2.7 https://www.python.org/downloads/release/python-2718/
+runs python 3.12. install all requirements with `pip install -r requirements.txt`.
+
+run by calling python design_5_utr.py <sequence> <protect_sequence1> <protect_sequence2> ...
+
+example: python script_name.py GCAGACTGTAAATCTGCCACTGGCGGCCGCTCGAGCAGACTGTAAATCTGC GCAGACTGTAAATCTGC
+
+note -- the second sequence is the TGT recognition sequence. any additional sequences will not be mutated during optimization, so you want to put any RE sites etc in there as well.
 
 # Human 5′ UTR design and variant effect prediction from a massively parallel translation assay
 
