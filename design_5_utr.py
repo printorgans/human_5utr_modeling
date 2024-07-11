@@ -6,9 +6,17 @@ import seaborn as sns
 from sklearn import preprocessing
 from keras.models import load_model
 import h5py
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv1D, Flatten, Dense, Dropout, Activation
-from tensorflow.keras.initializers import VarianceScaling, Zeros
+import keras
+np.random.seed(1337)
+from keras.preprocessing import sequence
+from keras.optimizers import RMSprop
+from keras.models import Sequential
+from keras.layers import Dense, Dropout, Activation, Flatten, Conv1D, Lambda
+from keras.constraints import MaxNorm
+from keras.layers import Input
+from keras.initializers import VarianceScaling, Zeros
+import random
+import math
 
 
 # import keras
@@ -77,18 +85,6 @@ def vectorizeSequence(seq):
     return np.array([ltrdict[x] for x in seq])
 
 
-df = pd.read_csv('./data/GSM3130435_egfp_unmod_1.csv.gz')
-df.sort_values('total_reads', ascending=False).reset_index(drop=True)
-
-# Select a number of UTRs for the purpose of scaling.
-scale_utrs = df[:40000]
-
-# Scale
-scaler = preprocessing.StandardScaler()
-# scaler.fit(scale_utrs['rl'].reshape(-1,1))
-scaler.fit(scale_utrs['rl'].values.reshape(-1, 1))
-
-
 # model = load_model('../modeling/saved_models/evolution_model.hdf5')
 # model = load_model('../modeling/saved_models/retrained_evolution_model.hdf5')
 # model = load_model('../modeling/saved_models/main_MRL_model.hdf5')
@@ -136,71 +132,48 @@ def load_attempt():
                 print(f"batch_input_shape: {batch_input_shape}")
 
 
+def print_tensor_shape(x):
+    print("Tensor shape:", x.shape)
+    return x
 
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv1D, Flatten, Dense, Dropout, Activation, Input
-from tensorflow.keras.initializers import VarianceScaling, Zeros
 
 class ModelWithWeights:
     def __init__(self):
         self.model = self.build_model()
 
-    def build_model(self):
-        model = Sequential()
+    def build_model(self, border_mode='same', inp_len=50, nodes=40, layers=3, filter_len=8, nbr_filters=120,
+                    dropout1=0, dropout2=0, dropout3=0.2, nb_epoch=3):
+            model = Sequential()
+            if layers >= 1:
+                model.add(Conv1D(activation="relu", input_shape=(inp_len, 4), padding=border_mode, filters=nbr_filters, kernel_size=filter_len))
+            if layers >= 2:
+                model.add(Conv1D(activation="relu", input_shape=(inp_len, 1), padding=border_mode, filters=nbr_filters, kernel_size=filter_len))
+                model.add(Dropout(dropout1))
+            if layers >= 3:
+                model.add(Conv1D(activation="relu", input_shape=(inp_len, 1), padding=border_mode, filters=nbr_filters, kernel_size=filter_len))
+                model.add(Dropout(dropout2))
+            model.add(Flatten())
 
-        model.add(Input(shape=(54, 4)))
+            model.add(Dense(nodes))
+            model.add(Activation('relu'))
+            model.add(Dropout(dropout3))
+            
+            model.add(Dense(1))
+            model.add(Activation('linear'))
 
-        model.add(Conv1D(
-            filters=40, 
-            kernel_size=8, 
-            strides=1, 
-            padding='valid', 
-            activation='relu', 
-            kernel_initializer=VarianceScaling(scale=1.0, mode='fan_avg', distribution='uniform'),
-            bias_initializer=Zeros()
-        ))
+            #compile the model
+            #adam = keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
+            #model.compile(loss='mean_squared_error', optimizer=adam)
 
-        model.add(Conv1D(
-            filters=40, 
-            kernel_size=8, 
-            strides=1, 
-            padding='valid', 
-            activation='relu', 
-            kernel_initializer=VarianceScaling(scale=1.0, mode='fan_avg', distribution='uniform'),
-            bias_initializer=Zeros()
-        ))
+            # model.fit(x, y, batch_size=128, epochs=nb_epoch, verbose=1)
 
-        model.add(Flatten())
 
-        model.add(Dense(
-            units=40, 
-            activation='linear', 
-            kernel_initializer=VarianceScaling(scale=1.0, mode='fan_avg', distribution='uniform'),
-            bias_initializer=Zeros()
-        ))
-
-        model.add(Dropout(rate=0.2))
-
-        model.add(Activation('relu'))
-
-        model.add(Dense(
-            units=1, 
-            activation='linear', 
-            kernel_initializer=VarianceScaling(scale=1.0, mode='fan_avg', distribution='uniform'),
-            bias_initializer=Zeros()
-        ))
-
-        model.add(Activation('linear'))
-
-        return model
+            return model
 
     def load_weights(self, hdf5_path):
         self.model.load_weights(hdf5_path)
 
 
-
-import random
-import math
 
 def ret_rand_nuc():
     x = random.randint(0,3)
@@ -325,7 +298,7 @@ def selection_to_target(seq, model, scaler, target_val, no_uaug=False, no_stop=F
         return seqs[0]
     if no_stop == True and check_for_stops(seqs[1]):
         return seqs[0]
-    
+    print(f"Shape of test_sequences11: {test_sequences.shape}")
     scores = model.predict(seqs).reshape(-1)
     scores = scaler.inverse_transform(scores)
     
@@ -339,11 +312,23 @@ def selection_to_target(seq, model, scaler, target_val, no_uaug=False, no_stop=F
             return seqs[0]    
         
 
+
+df = pd.read_csv('./data/GSM3130435_egfp_unmod_1.csv.gz')
+df.sort_values('total_reads', ascending=False).reset_index(drop=True)
+
+# Select a number of UTRs for the purpose of scaling.
+scale_utrs = df[:40000]
+
+# Scale
+scaler = preprocessing.StandardScaler()
+# scaler.fit(scale_utrs['rl'].reshape(-1,1))
+scaler.fit(scale_utrs['rl'].values.reshape(-1, 1))
 # Usage
 model_with_weights = ModelWithWeights()
-model_with_weights.load_weights('./modeling/saved_models/retrained_evolution_model.hdf5')
+model_with_weights.load_weights('./modeling/saved_models/main_MRL_model.hdf5')
 model_with_weights.model.summary()
 model = model_with_weights.model
+#model = load_model('./modeling/saved_models/retrained_evolution_model.hdf5')
 
         
 # Dictionary where new sequences are saved
@@ -388,6 +373,7 @@ for target_rl, nbr_sequences in zip(targets, seqs_per_target):
             print('Generation: {}'.format(generation + 1))          
     print
     # Final prediction then convert to text sequence
+    print(f"Shape of test_sequences: {test_sequences.shape}")
     predictions = model.predict(test_sequences).reshape(-1)
     predictions = scaler.inverse_transform(predictions)
     converted_df = convert_and_save(test_sequences,predictions)
