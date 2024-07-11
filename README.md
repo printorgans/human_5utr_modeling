@@ -2,7 +2,7 @@ runs python 3.12. install all requirements with `pip install -r requirements.txt
 
 run by calling python design_5_utr.py <sequence> <protect_sequence1> <protect_sequence2> ...
 
-example: python script_name.py GCAGACTGTAAATCTGCCACTGGCGGCCGCTCGAGCAGACTGTAAATCTGC GCAGACTGTAAATCTGC
+example: python design_5_utr.py GCAGACTGTAAATCTGCCACTGGCGGCCGCTCGAGCAGACTGTAAATCTGC GCAGACTGTAAATCTGC
 
 note -- the second sequence is the TGT recognition sequence. any additional sequences will not be mutated during optimization, so you want to put any RE sites etc in there as well.
 
