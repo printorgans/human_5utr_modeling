@@ -17,6 +17,7 @@ from keras.layers import Input
 from keras.initializers import VarianceScaling, Zeros
 import random
 import math
+import plotly.express as px
 
 
 # import keras
@@ -79,6 +80,7 @@ def binarize_sequences(df, col='utr', seq_len=54):
     return vector
 
 def vectorizeSequence(seq):
+    seq = seq.lower()
     # the order of the letters is not arbitrary.
     # Flip the matrix up-down and left-right for reverse compliment
     ltrdict = {'a':[1,0,0,0],'c':[0,1,0,0],'g':[0,0,1,0],'t':[0,0,0,1], 'n':[0,0,0,0]}
@@ -202,7 +204,7 @@ def vector_to_nuc(arr, seq_len=50):
 def convert_and_save(sequences, predictions):
     # Convert the one-hot encoded sequences to A, C, T, G
     seqs = []
-    for nbr in xrange(len(sequences)):
+    for nbr in range(len(sequences)):
         seqs.append(vector_to_nuc(sequences[nbr]))
     df = pd.DataFrame(data=[seqs,predictions.tolist()]).transpose()
     df.columns = ['utr', 'prediction']
@@ -298,8 +300,7 @@ def selection_to_target(seq, model, scaler, target_val, no_uaug=False, no_stop=F
         return seqs[0]
     if no_stop == True and check_for_stops(seqs[1]):
         return seqs[0]
-    print(f"Shape of test_sequences11: {test_sequences.shape}")
-    scores = model.predict(seqs).reshape(-1)
+    scores = model.predict(seqs).reshape(-1,1)
     scores = scaler.inverse_transform(scores)
     
     # Accept sequences that fall within this range. May provide more sequence diversity
@@ -310,76 +311,114 @@ def selection_to_target(seq, model, scaler, target_val, no_uaug=False, no_stop=F
             return seqs[1]
         else:
             return seqs[0]    
-        
 
+def check_quality():
+    df = pd.read_csv('./data/GSM3130435_egfp_unmod_1.csv.gz')
+    df.sort_values('total_reads', ascending=False).reset_index(drop=True)
 
-df = pd.read_csv('./data/GSM3130435_egfp_unmod_1.csv.gz')
-df.sort_values('total_reads', ascending=False).reset_index(drop=True)
+    # Select a number of UTRs for the purpose of scaling.
+    #scale_utrs = df[:40000]
+    scale_utrs = df[:4000]
+    # Scale
+    scaler = preprocessing.StandardScaler()
+    # scaler.fit(scale_utrs['rl'].reshape(-1,1))
+    scaler.fit(scale_utrs['rl'].values.reshape(-1, 1))
 
-# Select a number of UTRs for the purpose of scaling.
-scale_utrs = df[:40000]
+    model_with_weights = ModelWithWeights()
+    model_with_weights.load_weights('./modeling/saved_models/main_MRL_model.hdf5')
+    model_with_weights.model.summary()
+    model = model_with_weights.model   
+    string = "TGCAGATATCCATCACACTGGCGGCCGCTCGAGCAGACTGTAAATCTGCG"
+    seq = vectorizeSequence(string)
+    test_sequences = seq.reshape(1, 50, 4)
 
-# Scale
-scaler = preprocessing.StandardScaler()
-# scaler.fit(scale_utrs['rl'].reshape(-1,1))
-scaler.fit(scale_utrs['rl'].values.reshape(-1, 1))
-# Usage
-model_with_weights = ModelWithWeights()
-model_with_weights.load_weights('./modeling/saved_models/main_MRL_model.hdf5')
-model_with_weights.model.summary()
-model = model_with_weights.model
-#model = load_model('./modeling/saved_models/retrained_evolution_model.hdf5')
-
-        
-# Dictionary where new sequences are saved
-evolved_seqs = {}
-
-# Number of evolution iterations
-iterations = 800
-# Number of bases to mutate if the probability to 'multi-mutate' is exceeded
-nbr_bases_to_mutate = 2
-# Probability to change multiple bases in an iteration
-prob_of_multi_mutation = 0.5
-# If using the original evolution model, set seq_len to 54. That model was
-# trained on UTRs that included the first for basees of the CDS (ATGG).
-seq_len = 50
-# Choose target MRLs and the number of sequences to create for each
-targets = [5, 8]
-seqs_per_target = [10, 10]
-# Choose whether or not to allow uAUGs and / or stop codons
-no_uaug = True
-no_stop = False
-
-for target_rl, nbr_sequences in zip(targets, seqs_per_target):
-    print('Working on target_rl {} with {} sequences:'.format(target_rl, nbr_sequences))
+    predictions = model.predict(test_sequences).reshape(-1, 1)
     
-    # Randomly generate starting sequences for evolving
-    rand_seqs = make_random_sequences(nbr_sequences, seq_len, no_uaug=no_uaug, no_stop=no_stop)
-    test_sequences = np.empty([len(rand_seqs), seq_len, 4])
-    i = 0
-    
-    # One-hot encode sequences
-    for seq in rand_seqs:
-        test_sequences[i] = vectorizeSequence(seq.lower())
-        i += 1
-    
-    # Evolve sequences
-    for generation in range(0, iterations):
-        for i in range(len(test_sequences)):
-            test_sequences[i] = selection_to_target(seq=test_sequences[i], model=model, scaler=scaler, target_val=target_rl,no_uaug=no_uaug,
-                                        no_stop=no_stop, nbr_bases_to_mutate=nbr_bases_to_mutate, multi_mutate_prob=prob_of_multi_mutation, seq_len=seq_len)
-
-        if (generation + 1) %  20 == 0:
-            print('Generation: {}'.format(generation + 1))          
-    print
-    # Final prediction then convert to text sequence
-    print(f"Shape of test_sequences: {test_sequences.shape}")
-    predictions = model.predict(test_sequences).reshape(-1)
     predictions = scaler.inverse_transform(predictions)
-    converted_df = convert_and_save(test_sequences,predictions)
+    print("Predictions:", predictions)
+
+
+
+def slop():
+    df = pd.read_csv('./data/GSM3130435_egfp_unmod_1.csv.gz')
+    df.sort_values('total_reads', ascending=False).reset_index(drop=True)
+
+    # Select a number of UTRs for the purpose of scaling.
+    #scale_utrs = df[:40000]
+    scale_utrs = df[:4000]
+
+    # Scale
+    scaler = preprocessing.StandardScaler()
+    # scaler.fit(scale_utrs['rl'].reshape(-1,1))
+    scaler.fit(scale_utrs['rl'].values.reshape(-1, 1))
+    # Usage
+    model_with_weights = ModelWithWeights()
+    model_with_weights.load_weights('./modeling/saved_models/main_MRL_model.hdf5')
+    model_with_weights.model.summary()
+    model = model_with_weights.model
+    #model = load_model('./modeling/saved_models/retrained_evolution_model.hdf5')
+
+            
+    # Dictionary where new sequences are saved
+    evolved_seqs = {}
+
+    # Number of evolution iterations
+    #iterations = 800
+    iterations = 10
+    # Number of bases to mutate if the probability to 'multi-mutate' is exceeded
+    nbr_bases_to_mutate = 2
+    # Probability to change multiple bases in an iteration
+    prob_of_multi_mutation = 0.5
+    # If using the original evolution model, set seq_len to 54. That model was
+    # trained on UTRs that included the first for basees of the CDS (ATGG).
+    seq_len = 50
+    # Choose target MRLs and the number of sequences to create for each
+    targets = [5, 8]
+    seqs_per_target = [10, 10]
+    # Choose whether or not to allow uAUGs and / or stop codons
+    no_uaug = True
+    no_stop = False
+
+    for target_rl, nbr_sequences in zip(targets, seqs_per_target):
+        print('Working on target_rl {} with {} sequences:'.format(target_rl, nbr_sequences))
+        
+        # Randomly generate starting sequences for evolving
+        rand_seqs = make_random_sequences(nbr_sequences, seq_len, no_uaug=no_uaug, no_stop=no_stop)
+        test_sequences = np.empty([len(rand_seqs), seq_len, 4])
+        i = 0
+        
+        # One-hot encode sequences
+        for seq in rand_seqs:
+            test_sequences[i] = vectorizeSequence(seq.lower())
+            i += 1
+        
+        # Evolve sequences
+        for generation in range(0, iterations):
+            for i in range(len(test_sequences)):
+                test_sequences[i] = selection_to_target(seq=test_sequences[i], model=model, scaler=scaler, target_val=target_rl,no_uaug=no_uaug,
+                                            no_stop=no_stop, nbr_bases_to_mutate=nbr_bases_to_mutate, multi_mutate_prob=prob_of_multi_mutation, seq_len=seq_len)
+
+            if (generation + 1) %  20 == 0:
+                print('Generation: {}'.format(generation + 1))          
+        # Final prediction then convert to text sequence
+        predictions = model.predict(test_sequences).reshape(-1, 1)
     
-    evolved_seqs[target_rl] = converted_df
+        predictions = scaler.inverse_transform(predictions)
+        converted_df = convert_and_save(test_sequences, predictions)
+        print(f"Converted DataFrame: {converted_df}")
+
+        evolved_seqs[target_rl] = converted_df
+
+    # Plot using Plotly
+    plotly_data = pd.concat(evolved_seqs.values())
+
+    ## plot
+    fig = px.histogram(plotly_data, x='prediction', marginal="density", barmode='overlay', histnorm='density')
+    fig.show()
+
+    #for i in evolved_seqs:
+    ##    sns.kdeplot(evolved_seqs[i]['prediction'], fill=True, label=i)
 
 
-for i in evolved_seqs:
-    sns.kdeplot(evolved_seqs[i]['prediction'], shade=True, legend=True, label=i)
+check_quality()
+#slop()
