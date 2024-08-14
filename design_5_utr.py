@@ -578,6 +578,10 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         seq = sys.argv[1]
         protect_sequences = sys.argv[2:] if len(sys.argv) > 2 else ["GCAGACTGTAAATCTGC"]
+        
         slop(seq, protect_sequences)
     else:
-        slop(seq="GCAGACTGTAAATCTGCCACTGGCGGCCGCTCGAGCAGACTGTAAATCTGC", protect_sequences=["GCAGACTGTAAATCTGC"])
+        slop(seq="TGCAGATATCCATCACACTGGCGGCCGCTCGAGCAGACTGTAAATCTGCG", protect_sequences=["GCAGACTGTAAATCTGC"])
+
+
+str= "TGTTTCTTTACACTAAACTGGCAATTCTATTCGCAGACTGTAAATCTGCG"
